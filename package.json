@@ -1,6 +1,6 @@
 {
   "name": "@currentjs/provider",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Provider interface & dummy provider for currentjs",
   "license": "LGPL-3.0",
   "author": "Konstantin Zavalny",
