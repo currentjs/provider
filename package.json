@@ -1,0 +1,31 @@
+{
+  "name": "@currentjs/provider",
+  "version": "0.1.0",
+  "description": "Provider interface & dummy provider for currentjs",
+  "license": "LGPL-3.0",
+  "author": "Konstantin Zavalny",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/currentjs/provider.git"
+  },
+  "homepage": "https://github.com/currentjs/provider",
+  "bugs": "https://github.com/currentjs/provider/issues",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^5.6.3"
+  }
+}
