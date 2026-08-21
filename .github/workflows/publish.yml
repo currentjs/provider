@@ -13,12 +13,13 @@ on:
           - minor
           - major
       changelog:
-        description: "Changelog entry for this release (describe what changed)"
+        description: "Changelog entries for this release (separate lines with ' | ')"
         required: true
         type: string
 
 permissions:
   contents: write
+  id-token: write # Required for npm trusted publishing (OIDC)
 
 jobs:
   release:
@@ -31,7 +32,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          # Trusted publishing needs Node >= 22.14 and npm >= 11.5.1
+          node-version: 24
+          # Do NOT set registry-url: it writes _authToken=${NODE_AUTH_TOKEN} into
+          # .npmrc; an empty token makes npm skip OIDC and fail publish with 403.
+          package-manager-cache: false
+
+      - name: Ensure npm supports OIDC publish
+        # Pin npm 11 — npm@latest (12.x) has had provenance/OIDC packaging regressions
+        run: npm install -g npm@11
 
       - name: Install dependencies
         run: npm install
@@ -39,9 +48,8 @@ jobs:
       - name: Build project
         run: npm run build
 
-      # todo: Run tests before publishing
       # - name: Run tests
-      #   run: npm test
+      #   run: npm run test:all
 
       - name: Get current version
         id: current_version
@@ -69,16 +77,20 @@ jobs:
           # Create a temporary file with the new entry
           echo "## [$VERSION] - $DATE" > /tmp/new_entry.md
           echo "" >> /tmp/new_entry.md
-          echo "$CHANGELOG_TEXT" >> /tmp/new_entry.md
+          echo "$CHANGELOG_TEXT" | tr '|' '\n' | while IFS= read -r line; do
+            trimmed="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            [ -n "$trimmed" ] && echo "- $trimmed" >> /tmp/new_entry.md
+          done
           echo "" >> /tmp/new_entry.md
           
-          # Insert new entry after the header
-          if grep -q "^## \[" CHANGELOG.md; then
-            # Insert before the first existing version entry
-            awk '/^## \[/{print ""; system("cat /tmp/new_entry.md"); print; next}1' CHANGELOG.md > /tmp/changelog_new.md
+          # Insert new entry after the header, before the first existing version
+          FIRST_VERSION_LINE=$(grep -n "^## \[" CHANGELOG.md | head -1 | cut -d: -f1)
+          if [ -n "$FIRST_VERSION_LINE" ]; then
+            head -n $((FIRST_VERSION_LINE - 1)) CHANGELOG.md > /tmp/changelog_new.md
+            cat /tmp/new_entry.md >> /tmp/changelog_new.md
+            tail -n +$FIRST_VERSION_LINE CHANGELOG.md >> /tmp/changelog_new.md
             mv /tmp/changelog_new.md CHANGELOG.md
           else
-            # No existing entries, add after header
             cat /tmp/new_entry.md >> CHANGELOG.md
           fi
           
@@ -103,15 +115,17 @@ jobs:
           git push
           git push --tags
 
-      - name: Setup Node.js for publish
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          registry-url: 'https://registry.npmjs.org'
-
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Native trusted publishing: npm >= 11.5.1 detects the GitHub Actions
+        # OIDC environment, exchanges the ID token with the registry itself and
+        # authenticates the publish with the short-lived OIDC token. No npm
+        # token may be configured anywhere (no NODE_AUTH_TOKEN, no _authToken
+        # in any .npmrc), otherwise npm may fall back to token auth.
+        #
+        # Provenance is explicitly DISABLED: the registry silently rejects
+        # provenance-attached publishes of this package with a bodyless 403,
+        # while the identical publish without provenance succeeds (verified
+        # 2026-08-07, v0.2.2). Reported to npm support; re-enable once fixed.
         run: npm publish --access public
-
-
+        env:
+          NPM_CONFIG_PROVENANCE: "false"
